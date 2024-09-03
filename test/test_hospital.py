@@ -1,51 +1,104 @@
 import unittest
-
-from models.Hospital import Hospital
-
+from unittest.mock import patch, MagicMock
+from models.Hospital import Hospital  # Ensure this path is correct
 
 class TestHospital(unittest.TestCase):
-    def setUp(self):
-        self.hospital = Hospital(name="City Hospital", pin_code="12345")
 
-    def test_add_patient(self):
-        self.hospital.add_patient("John Doe")
-        self.assertIn("John Doe", self.hospital.patients)
+    @patch('models.Hospital.get_db_connection')  # Ensure this path matches the actual path in your project
+    def test_save_to_db_insert(self, mock_get_db_connection):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_db_connection.return_value = mock_conn
 
-    def test_discharge_patient(self):
-        self.hospital.add_patient("Jane Doe")
-        self.hospital.discharge_patient("Jane Doe")
-        self.assertNotIn("Jane Doe", self.hospital.patients)
+        # Test inserting a new Hospital
+        hospital_instance = Hospital(name="City Hospital", pin_code="12345")
+        mock_cursor.fetchone.return_value = (1,)  # Simulate returning a new hospital_id
 
-    def test_discharge_nonexistent_patient(self):
-        with self.assertRaises(ValueError):
-            self.hospital.discharge_patient("Nonexistent Patient")
+        hospital_instance.save_to_db()
 
-    def test_add_bed(self):
-        bed = {'type': 'ICU', 'number': 1}
-        self.hospital.add_bed(bed)
-        self.assertIn(bed, self.hospital.beds)
+        mock_cursor.execute.assert_called_once_with(
+            "INSERT INTO hospital (name, pin_code, corp_id) VALUES (%s, %s, %s) RETURNING hospital_id",
+            ("City Hospital", "12345", None)
+        )
+        self.assertEqual(hospital_instance.hospital_id, 1)
+        mock_conn.commit.assert_called_once()
+        mock_conn.close.assert_called_once()
 
-    def test_remove_bed(self):
-        bed = {'type': 'General', 'number': 2}
-        self.hospital.add_bed(bed)
-        self.hospital.remove_bed(bed)
-        self.assertNotIn(bed, self.hospital.beds)
+    @patch('models.Hospital.get_db_connection')
+    def test_save_to_db_update(self, mock_get_db_connection):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_db_connection.return_value = mock_conn
 
-    def test_remove_nonexistent_bed(self):
-        bed = {'type': 'Nonexistent', 'number': 99}
-        with self.assertRaises(ValueError):
-            self.hospital.remove_bed(bed)
+        # Test updating an existing Hospital
+        hospital_instance = Hospital(name="City Hospital", pin_code="12345", hospital_id=1, corp_id=10)
 
-    def test_list_beds_by_type(self):
-        bed1 = {'type': 'ICU', 'number': 1}
-        bed2 = {'type': 'ICU', 'number': 2}
-        bed3 = {'type': 'General', 'number': 3}
-        self.hospital.add_bed(bed1)
-        self.hospital.add_bed(bed2)
-        self.hospital.add_bed(bed3)
-        expected = {'ICU': 2, 'General': 1}
-        self.assertEqual(self.hospital.list_beds_by_type(), expected)
+        hospital_instance.save_to_db()
 
+        mock_cursor.execute.assert_called_once_with(
+            "UPDATE hospital SET name=%s, pin_code=%s, corp_id=%s WHERE hospital_id=%s",
+            ("City Hospital", "12345", 10, 1)
+        )
+        mock_conn.commit.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    @patch('models.Hospital.get_db_connection')
+    def test_remove_from_db(self, mock_get_db_connection):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_db_connection.return_value = mock_conn
+
+        # Test removing an existing Hospital
+        hospital_instance = Hospital(name="City Hospital", pin_code="12345", hospital_id=1)
+        hospital_instance.remove_from_db()
+
+        mock_cursor.execute.assert_called_once_with(
+            "DELETE FROM hospitals WHERE hospital_id=%s",
+            (1,)
+        )
+        mock_conn.commit.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    @patch('models.Hospital.get_db_connection')
+    def test_remove_from_db_no_id(self, mock_get_db_connection):
+        # Test removing a Hospital without a hospital_id
+        hospital_instance = Hospital(name="City Hospital", pin_code="12345")
+        with self.assertRaises(ValueError) as context:
+            hospital_instance.remove_from_db()
+        self.assertEqual(str(context.exception), "Hospital ID is required to remove the hospital.")
+
+    @patch('models.Hospital.get_db_connection')
+    def test_fetch_from_db(self, mock_get_db_connection):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_db_connection.return_value = mock_conn
+
+        # Test fetching an existing Hospital
+        mock_cursor.fetchone.return_value = (1, "City Hospital", "12345", 10)
+        hospital_instance = Hospital.fetch_from_db(1)
+
+        self.assertIsNotNone(hospital_instance)
+        self.assertEqual(hospital_instance.hospital_id, 1)
+        self.assertEqual(hospital_instance.name, "City Hospital")
+        self.assertEqual(hospital_instance.pin_code, "12345")
+        self.assertEqual(hospital_instance.corp_id, 10)
+
+    @patch('models.Hospital.get_db_connection')
+    def test_fetch_from_db_not_found(self, mock_get_db_connection):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_get_db_connection.return_value = mock_conn
+
+        # Test fetching a non-existent Hospital
+        mock_cursor.fetchone.return_value = None
+        hospital_instance = Hospital.fetch_from_db(999)
+
+        self.assertIsNone(hospital_instance)
 
 if __name__ == '__main__':
     unittest.main()

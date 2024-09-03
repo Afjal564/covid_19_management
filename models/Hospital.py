@@ -1,39 +1,108 @@
+# models/hospital.py
+import psycopg2
+from db import get_db_connection
 
 class Hospital:
-    def __init__(self, name: str, pin_code: str, beds: list = None, patients: list = None):
+    def __init__(self, name, pin_code, hospital_id=None, corp_id=None):
         self.name = name
         self.pin_code = pin_code
-        self.beds = beds if beds is not None else []
-        self.patients = patients if patients is not None else []
-        self.add_bed_count = 0
-        self.remove_bed_count = 0
+        self.hospital_id = hospital_id
+        self.corp_id = corp_id
 
-    def add_patient(self, patient: str):
-        if patient not in self.patients:
-            self.patients.append(patient)
+    def save_to_db(self):
+        conn = get_db_connection()
+        cur = conn.cursor()
+        if self.hospital_id:
+            cur.execute(
+                "UPDATE hospital SET name=%s, pin_code=%s, corp_id=%s WHERE hospital_id=%s",
+                (self.name, self.pin_code, self.corp_id, self.hospital_id)
+            )
         else:
-            raise ValueError("Patient already exists in the hospital.")
+            cur.execute(
+                "INSERT INTO hospital (name, pin_code, corp_id) VALUES (%s, %s, %s) RETURNING hospital_id",
+                (self.name, self.pin_code, self.corp_id)
+            )
+            self.hospital_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    def discharge_patient(self, patient: str):
-        if patient in self.patients:
-            self.patients.remove(patient)
-        else:
-            raise ValueError("Patient not found in the hospital.")
+    def remove_from_db(self):
+        if not self.hospital_id:
+            raise ValueError("Hospital ID is required to remove the hospital.")
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM hospitals WHERE hospital_id=%s",
+            (self.hospital_id,)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    def list_beds_by_type(self):
-        bed_count_by_type = {}
-        for bed in self.beds:
-            bed_type = bed.get('type', 'Unknown')
-            bed_count_by_type[bed_type] = bed_count_by_type.get(bed_type, 0) + 1
-        return bed_count_by_type
+    @staticmethod
+    def list_beds_by_type():
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT bed_type, COUNT(*) FROM beds GROUP BY bed_type;")
+                results = cur.fetchall()
+                bed_counts = {row[0]: row[1] for row in results}
+            return bed_counts
+        except Exception as e:
+            print(f"Error retrieving bed counts: {e}")
+            return {}
+        finally:
+            conn.close()
 
-    def add_bed(self, bed: dict):
-        self.beds.append(bed)
-        self.add_bed_count += 1
+    @staticmethod
+    def list_hospital():
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT hospital_id, name, pin_code, corp_id FROM hospital")
+                results = cur.fetchall()
+                hospitals = [Hospital(hospital_id=row[0], name=row[1], pin_code=row[2], corp_id=row[3]) for row in
+                             results]
+            return hospitals
+        except Exception as e:
+            print(f"Error retrieving hospitals: {e}")
+            return []
+        finally:
+            conn.close()
 
-    def remove_bed(self, bed: dict):
-        if bed in self.beds:
-            self.beds.remove(bed)
-            self.remove_bed_count += 1
-        else:
-            raise ValueError("Bed not found in the hospital.")
+    @staticmethod
+    def list_all_hospital_by_pincode(pin_code):
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT name, pin_code FROM hospital WHERE pin_code = %s", (pin_code,))
+                results = cur.fetchall()
+                hospitals = [Hospital(name=row[0], pin_code=row[1]) for row in results]
+                return hospitals
+        except Exception as e:
+            print(f"Error retrieving hospital: {e}")
+            return []
+        finally:
+            conn.close()
+
+    @staticmethod
+    def fetch_from_db(hospital_id):
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT hospital_id, name, pin_code, corp_id FROM hospital WHERE hospital_id=%s",
+                (hospital_id,)
+            )
+            row = cur.fetchone()
+            if row:
+                return Hospital(name=row[1], pin_code=row[2], hospital_id=row[0], corp_id=row[3])
+            else:
+                return None
+        except Exception as e:
+            print(f"Error fetching hospital: {e}")
+            return None
+        finally:
+            cur.close()
+            conn.close()

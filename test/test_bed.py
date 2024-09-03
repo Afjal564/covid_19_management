@@ -1,52 +1,62 @@
 import unittest
-from models.bed import Bed, BedType
-from enum import Enum
-
-
+from unittest.mock import patch, MagicMock
+from models.bed import Bed, BedType, get_db_connection
 
 class TestBed(unittest.TestCase):
-    def setUp(self):
-        self.bed = Bed(bed_id=1)
 
-    def test_initialization(self):
-        self.assertEqual(self.bed.bed_id, 1)
-        self.assertEqual(self.bed.bed_type, BedType.REGULAR)
-        self.assertFalse(self.bed.is_occupied)
-        self.assertIsNone(self.bed.current_patient)
+    # @patch('models.bed.get_db_connection')
+    # def test_add_to_db(self, mock_get_db_connection):
+    #     mock_conn = MagicMock()
+    #     mock_cursor = MagicMock()
+    #     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+    #     mock_get_db_connection.return_value = mock_conn
+    #
+    #     bed = Bed("001", BedType.REGULAR)
+    #     bed.add_to_db()
+    #
+    #     mock_cursor.execute.assert_called_once_with("""
+    #         INSERT INTO beds (bed_id, bed_type)
+    #         VALUES (%s, %s)
+    #         ON CONFLICT (bed_id) DO UPDATE
+    #         SET bed_type = EXCLUDED.bed_type;
+    #     """, ("001", "Regular"))
+    #     mock_conn.commit.assert_called_once()
+    #     mock_conn.close.assert_called_once()
 
-    def test_add_patient(self):
-        self.bed.add_patient('John Doe')
-        self.assertTrue(self.bed.is_occupied)
-        self.assertEqual(self.bed.current_patient, 'John Doe')
+    @patch('models.bed.get_db_connection')
+    def test_remove_from_db(self, mock_get_db_connection):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_get_db_connection.return_value = mock_conn
 
-    def test_discharge_patient(self):
-        self.bed.add_patient('John Doe')
-        self.bed.discharge_patient()
-        self.assertFalse(self.bed.is_occupied)
-        self.assertIsNone(self.bed.current_patient)
+        bed = Bed("001", BedType.REGULAR)
+        bed.remove_from_db()
 
-    def test_add_patient_when_occupied(self):
-        self.bed.add_patient('John Doe')
-        with self.assertRaises(Exception) as context:
-            self.bed.add_patient('Jane Doe')
-        self.assertEqual(str(context.exception), "Bed is already occupied")
+        mock_cursor.execute.assert_called_once_with("DELETE FROM beds WHERE bed_id = %s;", ("001",))
+        mock_conn.commit.assert_called_once()
+        mock_conn.close.assert_called_once()
 
-    def test_discharge_patient_when_not_occupied(self):
-        with self.assertRaises(Exception) as context:
-            self.bed.discharge_patient()
-        self.assertEqual(str(context.exception), "Bed is not occupied")
+    @patch('models.bed.get_db_connection')
+    def test_list_beds_by_type(self, mock_get_db_connection):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_get_db_connection.return_value = mock_conn
 
-    def test_update_bed_type(self):
-        self.bed.update_bed_type(BedType.ICU)
-        self.assertEqual(self.bed.bed_type, BedType.ICU)
+        mock_cursor.fetchall.return_value = [
+            ('Regular', 10),
+            ('ICU', 5)
+        ]
 
-    def test_update_bed_type_invalid(self):
-        with self.assertRaises(ValueError) as context:
-            self.bed.update_bed_type('InvalidType')
-        self.assertEqual(str(context.exception), "new_type must be an instance of BedType")
+        bed_counts = Bed.list_beds_by_type()
+
+        self.assertEqual(bed_counts, {
+            'Regular': 10,
+            'ICU': 5
+        })
+        mock_cursor.execute.assert_called_once_with("SELECT bed_type, COUNT(*) FROM beds GROUP BY bed_type;")
+        mock_conn.close.assert_called_once()
 
 if __name__ == '__main__':
-    unittest.main()
-
-if __name__ == "__main__":
     unittest.main()
