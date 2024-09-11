@@ -2,87 +2,143 @@ import unittest
 from unittest.mock import patch, MagicMock
 from models.MunicipalCorporation import MunicipalCorporation
 from models.Hospital import Hospital
-from db import get_db_connection
+
 
 class TestMunicipalCorporation(unittest.TestCase):
 
     @patch('models.MunicipalCorporation.get_db_connection')
-    def test_initialization_and_loading_hospitals(self, mock_get_db_connection):
-        # Mock database connection and cursor
+    def test_save_new_corporation(self, mock_get_db_connection):
+        # Setup mock
         mock_conn = MagicMock()
-        mock_cursor = MagicMock()
+        mock_cur = mock_conn.cursor.return_value
+        mock_cur.fetchone.return_value = [1]  # Simulate returning a new corp_id
         mock_get_db_connection.return_value = mock_conn
-        mock_conn.cursor.return_value = mock_cursor
 
-        # Setup the cursor mock to return test hospital IDs
-        mock_cursor.fetchall.return_value = [(1,), (2,)]
+        # Test new municipal corporation save
+        corp = MunicipalCorporation(name="Test Corporation")
+        corp.save_to_db()
 
-        # Mock the fetch_from_db method
-        mock_hospital_1 = MagicMock(spec=Hospital)
-        mock_hospital_1.hospital_id = 1
-        mock_hospital_2 = MagicMock(spec=Hospital)
-        mock_hospital_2.hospital_id = 2
+        self.assertEqual(corp.corp_id, 1)
+        mock_cur.execute.assert_called_with(
+            "INSERT INTO municipal_corporation (name) VALUES (%s) RETURNING corp_id",
+            ("Test Corporation",)
+        )
+        mock_conn.commit.assert_called_once()
 
-        with patch('models.Hospital.Hospital.fetch_from_db', side_effect=[mock_hospital_1, mock_hospital_2]):
-            corp = MunicipalCorporation(name="Test Corp", corp_id=123)
+    @patch('models.MunicipalCorporation.get_db_connection')
+    def test_update_corporation(self, mock_get_db_connection):
+        # Setup mock
+        mock_conn = MagicMock()
+        mock_get_db_connection.return_value = mock_conn
 
-            # Verify hospitals are loaded
-            self.assertEqual(len(corp.hospitals), 2)
-            self.assertIn(mock_hospital_1, corp.hospitals)
-            self.assertIn(mock_hospital_2, corp.hospitals)
+        # Test updating an existing municipal corporation
+        corp = MunicipalCorporation(name="Updated Corporation", corp_id=1)
+        corp.save_to_db()
 
-    # Commented out test methods that are causing errors
+        mock_conn.cursor.return_value.execute.assert_called_with(
+            "UPDATE municipal_corporation SET name=%s WHERE corp_id=%s",
+            ("Updated Corporation", 1)
+        )
+        mock_conn.commit.assert_called_once()
 
-    # @patch('models.Hospital.Hospital.save_to_db')
-    # @patch('models.MunicipalCorporation.get_db_connection')
-    # def test_add_hospital(self, mock_get_db_connection, mock_save_to_db):
-    #     mock_conn = MagicMock()
-    #     mock_get_db_connection.return_value = mock_conn
-    #     mock_hospital = MagicMock(spec=Hospital)
-    #     mock_hospital.corp_id = None
+    @patch('models.MunicipalCorporation.get_db_connection')
+    def test_load_hospitals(self, mock_get_db_connection):
+        # Setup mock for loading hospitals
+        mock_conn = MagicMock()
+        mock_cur = mock_conn.cursor.return_value
+        mock_cur.fetchall.return_value = [(1,), (2,)]  # Simulate hospital IDs
+        mock_get_db_connection.return_value = mock_conn
 
-    #     corp = MunicipalCorporation(name="Test Corp", corp_id=123)
-    #     corp.add_hospital(mock_hospital)
+        with patch('models.Hospital.Hospital.fetch_from_db') as mock_fetch_hospital:
+            mock_fetch_hospital.side_effect = [Hospital(name="Hospital 1", hospital_id=1),
+                                               Hospital(name="Hospital 2", hospital_id=2)]
 
-    #     # Ensure that the hospital's corp_id is set
-    #     self.assertEqual(mock_hospital.corp_id, 123)
+            corp = MunicipalCorporation(name="Corp", corp_id=1)
+            hospitals = corp.load_hospitals()
 
-    #     # Check that save_to_db was called
-    #     mock_save_to_db.assert_called_once()
-    #     self.assertIn(mock_hospital, corp.hospitals)
+            self.assertEqual(len(hospitals), 2)
+            mock_fetch_hospital.assert_any_call(1)
+            mock_fetch_hospital.assert_any_call(2)
 
-    # @patch('models.Hospital.Hospital.fetch_from_db')
-    # @patch('models.Hospital.Hospital.remove_from_db')
-    # def test_remove_hospital(self, mock_remove_from_db, mock_fetch_from_db):
-    #     mock_hospital = MagicMock(spec=Hospital)
-    #     mock_hospital.hospital_id = 1
-    #     mock_fetch_from_db.return_value = mock_hospital
+    @patch('models.MunicipalCorporation.get_db_connection')
+    def test_add_hospital(self, mock_get_db_connection):
+        # Setup mock
+        mock_conn = MagicMock()
+        mock_get_db_connection.return_value = mock_conn
 
-    #     corp = MunicipalCorporation(name="Test Corp", corp_id=123)
-    #     corp.hospitals = [mock_hospital]
+        # Test adding a hospital
+        corp = MunicipalCorporation(name="Corp", corp_id=1)
+        hospital = Hospital(name="New Hospital", pin_code="123456")
+        with patch.object(Hospital, 'save_to_db') as mock_save_to_db:
+            corp.add_hospital(hospital)
+            mock_save_to_db.assert_called_once()
+            self.assertEqual(hospital.corp_id, 1)
+            self.assertEqual(len(corp.hospitals), 1)
 
-    #     corp.remove_hospital(1)
+    def test_add_invalid_hospital(self):
+        corp = MunicipalCorporation(name="Corp", corp_id=1)
+        with self.assertRaises(ValueError):
+            corp.add_hospital("invalid_hospital")
 
-    #     # Verify that remove_from_db was called
-    #     mock_remove_from_db.assert_called_once()
-    #     self.assertNotIn(mock_hospital, corp.hospitals)
+    @patch('models.MunicipalCorporation.get_db_connection')
+    def test_remove_hospital(self, mock_get_db_connection):
+        # Setup mock
+        mock_conn = MagicMock()
+        mock_get_db_connection.return_value = mock_conn
 
-    # @patch('models.Hospital.Hospital.fetch_from_db')
-    # @patch('models.Hospital.Hospital.save_to_db')
-    # def test_edit_hospital(self, mock_save_to_db, mock_fetch_from_db):
-    #     mock_hospital = MagicMock(spec=Hospital)
-    #     mock_hospital.hospital_id = 1
-    #     mock_fetch_from_db.return_value = mock_hospital
+        with patch.object(Hospital, 'fetch_from_db') as mock_fetch_hospital:
+            mock_fetch_hospital.return_value = Hospital(name="Hospital 1", hospital_id=1)
+            with patch.object(Hospital, 'remove_from_db') as mock_remove_from_db:
+                corp = MunicipalCorporation(name="Corp", corp_id=1)
+                corp.hospitals = [Hospital(name="Hospital 1", hospital_id=1)]
+                corp.remove_hospital(1)
 
-    #     corp = MunicipalCorporation(name="Test Corp", corp_id=123)
+                mock_remove_from_db.assert_called_once()
+                self.assertEqual(len(corp.hospitals), 0)
 
-    #     # Edit hospital details
-    #     corp.edit_hospital(1, new_name="New Name", new_pin_code="123456")
+    @patch('models.MunicipalCorporation.get_db_connection')
+    def test_remove_nonexistent_hospital(self, mock_get_db_connection):
+        # Setup mock
+        mock_conn = MagicMock()
+        mock_get_db_connection.return_value = mock_conn
 
-    #     # Verify that the hospital's details were updated and saved
-    #     self.assertEqual(mock_hospital.name, "New Name")
-    #     self.assertEqual(mock_hospital.pin_code, "123456")
-    #     mock_save_to_db.assert_called_once()
+        with patch.object(Hospital, 'fetch_from_db') as mock_fetch_hospital:
+            mock_fetch_hospital.return_value = None  # Hospital not found
+            corp = MunicipalCorporation(name="Corp", corp_id=1)
+            with self.assertRaises(ValueError):
+                corp.remove_hospital(99)
+
+    @patch('models.MunicipalCorporation.get_db_connection')
+    def test_edit_hospital(self, mock_get_db_connection):
+        # Setup mock
+        mock_conn = MagicMock()
+        mock_get_db_connection.return_value = mock_conn
+
+        with patch.object(Hospital, 'fetch_from_db') as mock_fetch_hospital:
+            hospital = Hospital(name="Hospital 1", hospital_id=1)
+            mock_fetch_hospital.return_value = hospital
+
+            with patch.object(Hospital, 'save_to_db') as mock_save_to_db:
+                corp = MunicipalCorporation(name="Corp", corp_id=1)
+                corp.edit_hospital(1, new_name="Updated Hospital", new_pin_code="654321")
+
+                self.assertEqual(hospital.name, "Updated Hospital")
+                self.assertEqual(hospital.pin_code, "654321")
+                mock_save_to_db.assert_called_once()
+
+    @patch('models.MunicipalCorporation.get_db_connection')
+    def test_edit_nonexistent_hospital(self, mock_get_db_connection):
+        # Setup mock
+        mock_conn = MagicMock()
+        mock_get_db_connection.return_value = mock_conn
+
+        with patch.object(Hospital, 'fetch_from_db') as mock_fetch_hospital:
+            mock_fetch_hospital.return_value = None  # Hospital not found
+
+            corp = MunicipalCorporation(name="Corp", corp_id=1)
+            with self.assertRaises(ValueError):
+                corp.edit_hospital(99, new_name="Updated Hospital", new_pin_code="654321")
+
 
 if __name__ == '__main__':
     unittest.main()

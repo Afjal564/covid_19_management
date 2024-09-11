@@ -2,8 +2,6 @@ import psycopg2
 from db import get_db_connection
 import logging
 
-
-
 class Patient:
     def __init__(self, patient_id: str, name: str, age: int, status: str, assigned_bed: str = None):
         self.patient_id = patient_id
@@ -30,6 +28,7 @@ class Patient:
             logging.error(f"Error adding patient to database: {e}")
         finally:
             conn.close()
+
     def discharge_from_db(self):
         try:
             conn = get_db_connection()
@@ -72,10 +71,8 @@ class Patient:
         try:
             conn = get_db_connection()
             with conn.cursor() as cur:
-                # Fetch all patients with status 'Admitted'
                 cur.execute("SELECT patient_id, name, age, status, assigned_bed FROM patients WHERE status = %s;", ('Admitted',))
                 results = cur.fetchall()
-                # Create Patient objects for each result
                 patients = [Patient(patient_id=row[0], name=row[1], age=row[2], status=row[3], assigned_bed=row[4]) for row in results]
                 return patients
         except Exception as e:
@@ -89,10 +86,8 @@ class Patient:
         try:
             conn = get_db_connection()
             with conn.cursor() as cur:
-                # Fetch all patients with status 'Discharged'
                 cur.execute("SELECT patient_id, name, age, status, assigned_bed FROM patients WHERE status = %s;", ('Discharged',))
                 results = cur.fetchall()
-                # Create Patient objects for each result
                 patients = [Patient(patient_id=row[0], name=row[1], age=row[2], status=row[3], assigned_bed=row[4]) for row in results]
                 return patients
         except Exception as e:

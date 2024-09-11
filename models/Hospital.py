@@ -1,4 +1,3 @@
-# models/hospital.py
 import psycopg2
 from db import get_db_connection
 
@@ -12,33 +11,43 @@ class Hospital:
     def save_to_db(self):
         conn = get_db_connection()
         cur = conn.cursor()
-        if self.hospital_id:
-            cur.execute(
-                "UPDATE hospital SET name=%s, pin_code=%s, corp_id=%s WHERE hospital_id=%s",
-                (self.name, self.pin_code, self.corp_id, self.hospital_id)
-            )
-        else:
-            cur.execute(
-                "INSERT INTO hospital (name, pin_code, corp_id) VALUES (%s, %s, %s) RETURNING hospital_id",
-                (self.name, self.pin_code, self.corp_id)
-            )
-            self.hospital_id = cur.fetchone()[0]
-        conn.commit()
-        cur.close()
-        conn.close()
+        try:
+            if self.hospital_id:
+                # Update existing hospital
+                cur.execute(
+                    "UPDATE hospital SET name=%s, pin_code=%s, corp_id=%s WHERE hospital_id=%s",
+                    (self.name, self.pin_code, self.corp_id, self.hospital_id)
+                )
+            else:
+                # Insert new hospital
+                cur.execute(
+                    "INSERT INTO hospital (name, pin_code, corp_id) VALUES (%s, %s, %s) RETURNING hospital_id",
+                    (self.name, self.pin_code, self.corp_id)
+                )
+                self.hospital_id = cur.fetchone()[0]
+            conn.commit()
+        except psycopg2.Error as e:
+            print(f"Database error: {e}")
+        finally:
+            cur.close()
+            conn.close()
 
     def remove_from_db(self):
         if not self.hospital_id:
             raise ValueError("Hospital ID is required to remove the hospital.")
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM hospitals WHERE hospital_id=%s",
-            (self.hospital_id,)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
+        try:
+            cur.execute(
+                "DELETE FROM hospital WHERE hospital_id=%s",
+                (self.hospital_id,)
+            )
+            conn.commit()
+        except psycopg2.Error as e:
+            print(f"Database error: {e}")
+        finally:
+            cur.close()
+            conn.close()
 
     @staticmethod
     def list_beds_by_type():
@@ -49,8 +58,8 @@ class Hospital:
                 results = cur.fetchall()
                 bed_counts = {row[0]: row[1] for row in results}
             return bed_counts
-        except Exception as e:
-            print(f"Error retrieving bed counts: {e}")
+        except psycopg2.Error as e:
+            print(f"Database error: {e}")
             return {}
         finally:
             conn.close()
@@ -62,11 +71,10 @@ class Hospital:
             with conn.cursor() as cur:
                 cur.execute("SELECT hospital_id, name, pin_code, corp_id FROM hospital")
                 results = cur.fetchall()
-                hospitals = [Hospital(hospital_id=row[0], name=row[1], pin_code=row[2], corp_id=row[3]) for row in
-                             results]
+                hospitals = [Hospital(hospital_id=row[0], name=row[1], pin_code=row[2], corp_id=row[3]) for row in results]
             return hospitals
-        except Exception as e:
-            print(f"Error retrieving hospitals: {e}")
+        except psycopg2.Error as e:
+            print(f"Database error: {e}")
             return []
         finally:
             conn.close()
@@ -80,8 +88,8 @@ class Hospital:
                 results = cur.fetchall()
                 hospitals = [Hospital(name=row[0], pin_code=row[1]) for row in results]
                 return hospitals
-        except Exception as e:
-            print(f"Error retrieving hospital: {e}")
+        except psycopg2.Error as e:
+            print(f"Database error: {e}")
             return []
         finally:
             conn.close()
@@ -100,8 +108,8 @@ class Hospital:
                 return Hospital(name=row[1], pin_code=row[2], hospital_id=row[0], corp_id=row[3])
             else:
                 return None
-        except Exception as e:
-            print(f"Error fetching hospital: {e}")
+        except psycopg2.Error as e:
+            print(f"Database error: {e}")
             return None
         finally:
             cur.close()

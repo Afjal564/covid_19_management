@@ -1,13 +1,29 @@
-# models/municipal_corporation.py
 import psycopg2
-from models.Hospital import  Hospital
 from db import get_db_connection
-
+from models.Hospital import Hospital
 class MunicipalCorporation:
     def __init__(self, name, corp_id=None):
         self.name = name
         self.corp_id = corp_id
-        self.hospitals = self.load_hospitals()
+        self.hospitals = self.load_hospitals() if corp_id else []
+
+    def save_to_db(self):
+        conn = get_db_connection()
+        cur = conn.cursor()
+        if self.corp_id:
+            cur.execute(
+                "UPDATE municipal_corporation SET name=%s WHERE corp_id=%s",
+                (self.name, self.corp_id)
+            )
+        else:
+            cur.execute(
+                "INSERT INTO municipal_corporation (name) VALUES (%s) RETURNING corp_id",
+                (self.name,)
+            )
+            self.corp_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
 
     def load_hospitals(self):
         if not self.corp_id:
@@ -23,6 +39,8 @@ class MunicipalCorporation:
     def add_hospital(self, hospital):
         if not isinstance(hospital, Hospital):
             raise ValueError("Only Hospital instances can be added.")
+        if self.corp_id is None:
+            raise ValueError("Municipal Corporation ID is not set.")
         hospital.corp_id = self.corp_id
         hospital.save_to_db()
         self.hospitals.append(hospital)
@@ -32,6 +50,8 @@ class MunicipalCorporation:
         if hospital:
             hospital.remove_from_db()
             self.hospitals = [h for h in self.hospitals if h.hospital_id != hospital_id]
+        else:
+            raise ValueError("Hospital with ID not found.")
 
     def edit_hospital(self, hospital_id, new_name=None, new_pin_code=None):
         hospital = Hospital.fetch_from_db(hospital_id)

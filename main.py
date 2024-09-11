@@ -1,6 +1,6 @@
 from models.Hospital import Hospital
 from models.MunicipalCorporation import MunicipalCorporation
-from models.patient import Patient
+from models.Patient import Patient
 from models.bed import Bed, BedType
 import unittest
 import sys
